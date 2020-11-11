@@ -1,0 +1,11 @@
+*.pyc
+*__pycache__*
+*core.*
+_ext
+tmp
+*.o*
+*~
+*.idea
+*.mp4
+*.h5
+*.pth
