@@ -20,14 +20,14 @@ We also provide a set of Face Detector for edge device in [here](https://github.
 | Pytorch (original image scale) | 90.70% | 88.16% | 73.82% |
 | Mxnet | 88.72% | 86.97% | 79.19% |
 | Mxnet(original image scale) | 89.58% | 87.11% | 69.12% |
-<p align="center"><img src="curve/Widerface.jpg" width="640"\></p>
+<p align="center"><img src="retinaface/curve/Widerface.jpg" width="640"\></p>
 
 ## FDDB Performance.
 | FDDB(pytorch) | performance |
 |:-|:-:|
 | Mobilenet0.25 | 98.64% |
 | Resnet50 | 99.22% |
-<p align="center"><img src="curve/FDDB.png" width="640"\></p>
+<p align="center"><img src="retinaface/curve/FDDB.png" width="640"\></p>
 
 ### Contents
 - [Installation](#installation)
@@ -112,7 +112,7 @@ python test_fddb.py --trained_model weight_file --network mobile0.25 or resnet50
 
 3. Download [eval_tool](https://bitbucket.org/marcopede/face-eval) to evaluate the performance.
 
-<p align="center"><img src="curve/1.jpg" width="640"\></p>
+<p align="center"><img src="retinaface/curve/1.jpg" width="640"\></p>
 
 ## TensorRT
 -[TensorRT](https://github.com/wang-xinyu/tensorrtx/tree/master/retinaface)

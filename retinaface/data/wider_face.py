@@ -1,6 +1,3 @@
-import os
-import os.path
-import sys
 import torch
 import torch.utils.data as data
 import cv2

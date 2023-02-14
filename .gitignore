@@ -9,3 +9,7 @@ tmp
 *.mp4
 *.h5
 *.pth
+*.egg-info
+
+/build
+/dist

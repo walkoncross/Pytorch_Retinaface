@@ -1,16 +1,18 @@
 from __future__ import print_function
-import os
+
 import argparse
 import torch
 import torch.backends.cudnn as cudnn
 import numpy as np
-from data import cfg_mnet, cfg_re50
-from layers.functions.prior_box import PriorBox
-from utils.nms.py_cpu_nms import py_cpu_nms
-import cv2
-from models.retinaface import RetinaFace
-from utils.box_utils import decode, decode_landm
 import time
+import cv2
+
+from retinaface.data import cfg_mnet, cfg_re50
+from retinaface.layers.functions.prior_box import PriorBox
+from retinaface.utils.nms.py_cpu_nms import py_cpu_nms
+from retinaface.models.retinaface import RetinaFace
+from retinaface.utils.box_utils import decode, decode_landm
+
 
 
 def check_keys(model, pretrained_state_dict):
@@ -19,27 +21,36 @@ def check_keys(model, pretrained_state_dict):
     used_pretrained_keys = model_keys & ckpt_keys
     unused_pretrained_keys = ckpt_keys - model_keys
     missing_keys = model_keys - ckpt_keys
-    print('Missing keys:{}'.format(len(missing_keys)))
-    print('Unused checkpoint keys:{}'.format(len(unused_pretrained_keys)))
-    print('Used keys:{}'.format(len(used_pretrained_keys)))
     assert len(used_pretrained_keys) > 0, 'load NONE from pretrained checkpoint'
     return True
 
 
 def remove_prefix(state_dict, prefix):
     ''' Old style model is stored with all names of parameters sharing common prefix 'module.' '''
-    print('remove prefix \'{}\''.format(prefix))
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
-
-def load_model(model, pretrained_path, load_to_cpu):
+def load_model(model, pretrained_path, load_to_cpu, url_file_name=None):
     print('Loading pretrained model from {}'.format(pretrained_path))
+
+    url_flag = False
+    if pretrained_path[:8] == 'https://':
+        url_flag = True
     if load_to_cpu:
-        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
+        if url_flag:
+            pretrained_dict = torch.hub.load_state_dict_from_url(pretrained_path,
+                                                                 map_location=lambda storage, loc: storage,
+                                                                 file_name=url_file_name)
+        else:
+            pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
     else:
         device = torch.cuda.current_device()
-        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+        if url_flag:
+            pretrained_dict = torch.hub.load_state_dict_from_url(pretrained_path,
+                                                                 map_location=lambda storage, loc: storage.cuda(device),
+                                                                 file_name=url_file_name)
+        else:
+            pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
     if "state_dict" in pretrained_dict.keys():
         pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
     else:
@@ -85,7 +96,7 @@ if __name__ == '__main__':
 
     # testing begin
     for i in range(100):
-        image_path = "./curve/test.jpg"
+        image_path = "curve/test.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
         img = np.float32(img_raw)
