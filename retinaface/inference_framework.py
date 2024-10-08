@@ -43,9 +43,9 @@ class RetinaFaceDetector:
             raise ValueError('Model configuration not found')
 
         # Load net and model
-        cpu_flag = 'cpu' in device
+        # cpu_flag = 'cpu' in device
         net = rf_model.RetinaFace(cfg=cfg, phase='test')
-        net = rf_detect.load_model(net, trained_model, cpu_flag, url_file_name=url_model_name)
+        net = rf_detect.load_model(net, trained_model, device=device, url_file_name=url_model_name)
         net.eval()
         print('RetinaFace loaded!')
 

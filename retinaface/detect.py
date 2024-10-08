@@ -30,33 +30,45 @@ def remove_prefix(state_dict, prefix):
     f = lambda x: x.split(prefix, 1)[-1] if x.startswith(prefix) else x
     return {f(key): value for key, value in state_dict.items()}
 
-def load_model(model, pretrained_path, load_to_cpu, url_file_name=None):
+def load_model(model, pretrained_path, device, url_file_name=None):
     print('Loading pretrained model from {}'.format(pretrained_path))
 
     url_flag = False
     if pretrained_path[:8] == 'https://':
         url_flag = True
-    if load_to_cpu:
-        if url_flag:
-            pretrained_dict = torch.hub.load_state_dict_from_url(pretrained_path,
-                                                                 map_location=lambda storage, loc: storage,
-                                                                 file_name=url_file_name)
-        else:
-            pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
-    else:
+
+    if 'cuda' in device or device=='gpu':
         device = torch.cuda.current_device()
         if url_flag:
             pretrained_dict = torch.hub.load_state_dict_from_url(pretrained_path,
-                                                                 map_location=lambda storage, loc: storage.cuda(device),
-                                                                 file_name=url_file_name)
+                                                                map_location=lambda storage, loc: storage.cuda(device),
+                                                                file_name=url_file_name)
         else:
             pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+    elif device=='mps':
+        device = torch.device('mps')
+        if url_flag:
+            pretrained_dict = torch.hub.load_state_dict_from_url(pretrained_path,
+                                                                map_location=device,
+                                                                file_name=url_file_name)
+        else:
+            pretrained_dict = torch.load(pretrained_path, map_location=device)
+    else:
+        if url_flag:
+            pretrained_dict = torch.hub.load_state_dict_from_url(pretrained_path,
+                                                                map_location=lambda storage, loc: storage,
+                                                                file_name=url_file_name)
+        else:
+            pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
+    
     if "state_dict" in pretrained_dict.keys():
         pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
     else:
         pretrained_dict = remove_prefix(pretrained_dict, 'module.')
+
     check_keys(model, pretrained_dict)
     model.load_state_dict(pretrained_dict, strict=False)
+    
     return model
 
 
@@ -72,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument('--top_k', default=5000, type=int, help='top_k')
     parser.add_argument('--nms_threshold', default=0.4, type=float, help='nms_threshold')
     parser.add_argument('--keep_top_k', default=750, type=int, help='keep_top_k')
-    parser.add_argument('-s', '--save_image', action="store_true", default=True, help='show detection results')
+    parser.add_argument('-s', '--save_image', action="store_true", default=False, help='show detection results')
     parser.add_argument('--vis_thres', default=0.6, type=float, help='visualization_threshold')
     args = parser.parse_args()
 
@@ -82,20 +94,40 @@ if __name__ == '__main__':
         cfg = cfg_mnet
     elif args.network == "resnet50":
         cfg = cfg_re50
+
+    if args.cpu:
+        print('--> load model and config files to CPU')
+        device = "cpu"
+    elif torch.cuda.is_available():
+        print('--> load model and config files to GPU')
+        device = "cuda"
+    elif torch.mps.is_available():
+        print('--> load model and config files to MPS')
+        device = "mps"
+    else:
+        raise RuntimeError('No GPU or MPS found. Please use "--cpu"')
+
     # net and model
     net = RetinaFace(cfg=cfg, phase = 'test')
-    net = load_model(net, args.trained_model, args.cpu)
+    net = load_model(net, args.trained_model, device=device)
     net.eval()
-    print('Finished loading model!')
-    print(net)
-    cudnn.benchmark = True
-    device = torch.device("cpu" if args.cpu else "cuda")
+    print('--> Finished loading model!')
+    # print(net)
+
+    if device == "cuda" and torch.cuda.is_available:
+        cudnn.benchmark = True
+
+    # device = torch.device("cpu" if args.cpu else "cuda")
+    device = torch.device(device)
     net = net.to(device)
 
     resize = 1
 
+    total_time = 0
+    n_loops = 100
+
     # testing begin
-    for i in range(100):
+    for i in range(n_loops):
         image_path = "curve/test.jpg"
         img_raw = cv2.imread(image_path, cv2.IMREAD_COLOR)
 
@@ -111,7 +143,11 @@ if __name__ == '__main__':
 
         tic = time.time()
         loc, conf, landms = net(img)  # forward pass
-        print('net forward time: {:.4f}'.format(time.time() - tic))
+
+        time_det = time.time() - tic
+        # print('net forward time: {:.4f}'.format(time_det))
+
+        total_time += time_det
 
         priorbox = PriorBox(cfg, image_size=(im_height, im_width))
         priors = priorbox.forward()
@@ -178,3 +214,5 @@ if __name__ == '__main__':
             name = "test.jpg"
             cv2.imwrite(name, img_raw)
 
+    avg_time = total_time / n_loops
+    print(f'--> Average time: {avg_time:.4f} for {n_loops} loops')

@@ -12,7 +12,7 @@ parser.add_argument('-m', '--trained_model', default='./weights/mobilenet0.25_Fi
                     type=str, help='Trained state_dict file path to open')
 parser.add_argument('--network', default='mobile0.25', help='Backbone network mobile0.25 or resnet50')
 parser.add_argument('--long_side', default=640, help='when origin_size is false, long_side is scaled size(320 or 640 for long side)')
-parser.add_argument('--cpu', action="store_true", default=True, help='Use cpu inference')
+parser.add_argument('--cpu', action="store_true", default=False, help='Use cpu inference')
 
 args = parser.parse_args()
 
@@ -37,13 +37,17 @@ def remove_prefix(state_dict, prefix):
     return {f(key): value for key, value in state_dict.items()}
 
 
-def load_model(model, pretrained_path, load_to_cpu):
+def load_model(model, pretrained_path, device):
     print('Loading pretrained model from {}'.format(pretrained_path))
-    if load_to_cpu:
-        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
-    else:
+    if 'cuda' in device or device=='gpu':
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+    elif device=='mps':
+        device = torch.device('mps')
+        pretrained_dict = torch.load(pretrained_path, map_location=device)
+    else:
+        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
+    
     if "state_dict" in pretrained_dict.keys():
         pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
     else:
@@ -60,13 +64,31 @@ if __name__ == '__main__':
         cfg = cfg_mnet
     elif args.network == "resnet50":
         cfg = cfg_re50
+
+    if args.cpu:
+        print('--> load model and config files to CPU')
+        device = "cpu"
+    elif torch.cuda.is_available():
+        print('--> load model and config files to GPU')
+        device = "cuda"
+    elif torch.mps.is_available():
+        print('--> load model and config files to MPS')
+        device = "mps"
+    else:
+        raise RuntimeError('No GPU or MPS found. Please use "--cpu"')
+
     # net and model
     net = RetinaFace(cfg=cfg, phase = 'test')
-    net = load_model(net, args.trained_model, args.cpu)
+    net = load_model(net, args.trained_model, device=device)
     net.eval()
-    print('Finished loading model!')
-    print(net)
-    device = torch.device("cpu" if args.cpu else "cuda")
+    print('--> Finished loading model!')
+    # print(net)
+
+    if device == "cuda" and torch.cuda.is_available:
+        cudnn.benchmark = True
+
+    # device = torch.device("cpu" if args.cpu else "cuda")
+    device = torch.device(device)
     net = net.to(device)
 
     # ------------------------ export -----------------------------
@@ -76,7 +98,7 @@ if __name__ == '__main__':
     output_names = ["output0"]
     inputs = torch.randn(1, 3, args.long_side, args.long_side).to(device)
 
-    torch_out = torch.onnx._export(net, inputs, output_onnx, export_params=True, verbose=False,
+    torch_out = torch.onnx.export(net, inputs, output_onnx, export_params=True, verbose=False,
                                    input_names=input_names, output_names=output_names)
 
 

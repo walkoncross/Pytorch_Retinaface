@@ -49,13 +49,17 @@ def remove_prefix(state_dict, prefix):
     return {f(key): value for key, value in state_dict.items()}
 
 
-def load_model(model, pretrained_path, load_to_cpu):
+def load_model(model, pretrained_path, device):
     print('Loading pretrained model from {}'.format(pretrained_path))
-    if load_to_cpu:
-        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
-    else:
+    if 'cuda' in device or device=='gpu':
         device = torch.cuda.current_device()
         pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage.cuda(device))
+    elif device=='mps':
+        device = torch.device('mps')
+        pretrained_dict = torch.load(pretrained_path, map_location=device)
+    else:
+        pretrained_dict = torch.load(pretrained_path, map_location=lambda storage, loc: storage)
+
     if "state_dict" in pretrained_dict.keys():
         pretrained_dict = remove_prefix(pretrained_dict['state_dict'], 'module.')
     else:
@@ -72,16 +76,32 @@ if __name__ == '__main__':
         cfg = cfg_mnet
     elif args.network == "resnet50":
         cfg = cfg_re50
+    
+    if args.cpu:
+        print('--> load model and config files to CPU')
+        device = "cpu"
+    elif torch.cuda.is_available():
+        print('--> load model and config files to GPU')
+        device = "cuda"
+    elif torch.mps.is_available():
+        print('--> load model and config files to MPS')
+        device = "mps"
+    else:
+        raise RuntimeError('No GPU or MPS found. Please use "--cpu"')
+
     # net and model
     net = RetinaFace(cfg=cfg, phase = 'test')
-    net = load_model(net, args.trained_model, args.cpu)
+    net = load_model(net, args.trained_model, device=device)
     net.eval()
-    print('Finished loading model!')
-    print(net)
-    cudnn.benchmark = True
-    device = torch.device("cpu" if args.cpu else "cuda")
-    net = net.to(device)
+    print('--> Finished loading model!')
+    # print(net)
 
+    if device == "cuda" and torch.cuda.is_available:
+        cudnn.benchmark = True
+
+    # device = torch.device("cpu" if args.cpu else "cuda")
+    device = torch.device(device)
+    net = net.to(device)
 
     # save file
     if not os.path.exists(args.save_folder):
